@@ -1,0 +1,23 @@
+{
+  "name": "dsh-tingshu-branch",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "把当前会话分出一个分支，让它按固定命令把这段对话整理成带日期版本的 txt 听书稿。",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

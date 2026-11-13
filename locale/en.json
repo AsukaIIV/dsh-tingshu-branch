@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Tingshu Branch",
+    "description": "Type the slash command tingshu in the composer: the current session forks a branch that rewrites this conversation into a spoken-word txt manuscript, named with today's date and a per-day version number."
+  }
+}

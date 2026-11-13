@@ -1,0 +1,6 @@
+- insert:
+    - id: tingshu-branch
+      name: dsh-tingshu-branch
+      config:
+        minutes: 75
+        timeZone: Asia/Shanghai

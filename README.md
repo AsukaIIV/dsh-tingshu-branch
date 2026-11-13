@@ -75,6 +75,13 @@ git clone https://github.com/AsukaIIV/dsh-tingshu-branch.git
 
 安装是 **link**，改这里源文件即刻影响已安装的包；但 Host 侧 ESM 模块世代不会热替换，改了 JS 之后要重装或重启 DSH 才生效。
 
+离线自测（不需要 DSH，用桩件跑切块与两条投递路径）：
+
+```powershell
+node test/unit.test.mjs     # 素材抽取、切块不丢字、命令全文
+node test/launch.test.mjs   # fork 分支 / 分块+新会话 两条路径的调用姿势
+```
+
 ## 为什么要走「分支 + 命令」而不是在插件里写稿
 
 上一版（`dsh-tingshu`，2026-11）试图在 Host 里直接读会话日志、拼稿、推 Git，撞了三类坑：bundle 挂载缺少 `dsh.bundle.patch` 导致行不生效、slot 组件的 `sessionId` 要靠 `inject` 传入导致按钮点了没反应、`sessionPersistence` 服务在 `apply()` 阶段还没创建导致接口五百。分支方案把这些全绕开了：分支自带上下文，写入交给一个会读文件、会自检的 agent，插件只负责确定性部分。

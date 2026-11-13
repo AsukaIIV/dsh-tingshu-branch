@@ -4,3 +4,5 @@
       config:
         minutes: 75
         timeZone: Asia/Shanghai
+        forkLimit: 45000
+        chunkChars: 6000

@@ -149,6 +149,9 @@ const NOISE_PATTERNS = [
   /^\[Compressed conversation section\][^\n]*$/gmu,
 ];
 
+/** 运行时注入的房务行——一条都不该出现在听书稿素材里。 */
+const NOISE_LINE = /^(?:Current runtime context|Current working directory:|Current file policy:|Current DeepSeek Harness|Approval requests are auto-granted|This snapshot supersedes|You are the Team Lead|Use `?list_agents|To message another teammate|If the user names a skill|A user may also invoke a skill)/u;
+
 /** 把一段内容块数组里的正文取出来（reasoning、tool-call 丢弃）。 */
 function blocksToText(content) {
   if (!Array.isArray(content)) return '';
@@ -162,7 +165,13 @@ function blocksToText(content) {
 function stripNoise(text) {
   let out = text;
   for (const pattern of NOISE_PATTERNS) out = out.replace(pattern, '');
-  return out
+  const kept = [];
+  for (const line of out.split('\n')) {
+    if (NOISE_LINE.test(line.trim())) continue;
+    kept.push(line);
+  }
+  return kept
+    .join('\n')
     .replace(/[ \t]+\n/gu, '\n')
     .replace(/\n{3,}/gu, '\n\n')
     .trim();

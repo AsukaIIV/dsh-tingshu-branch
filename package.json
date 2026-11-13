@@ -1,9 +1,9 @@
 {
   "name": "dsh-tingshu-branch",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "把当前会话分出一个分支，让它按固定命令把这段对话整理成带日期版本的 txt 听书稿。",
+  "description": "把当前会话整理成一份口语化、适合听的带日期版本 txt 听书稿；短对话走分支继承上下文，长对话自动切块素材、另开空会话分块写，不会顶爆上下文。",
   "exports": {
     ".": "./index.js",
     "./locale/*.json": "./locale/*.json",

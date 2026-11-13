@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Tingshu Branch",
-    "description": "Type the slash command tingshu in the composer: the current session forks a branch that rewrites this conversation into a spoken-word txt manuscript, named with today's date and a per-day version number."
+    "description": "Type /tingshu to turn the current conversation into a spoken-style txt script whose filename carries the date and that day's version. Short conversations fork a context-inheriting branch; long ones are sliced into material files and written chunk by chunk in a fresh session, so the context window is never blown."
   }
 }

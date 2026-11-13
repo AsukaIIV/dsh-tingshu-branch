@@ -590,6 +590,10 @@ async function launch(ctx, agent, options, settings, signal) {
   };
 }
 
+export const name = 'dsh-tingshu-branch';
+
+export const inject = ['commands', 'tools', 'sessionController', 'fs', 'workingDirectory'];
+
 export function apply(ctx, config) {
   const minutesConfig = Number(config?.minutes);
   const forkLimitConfig = Number(config?.forkLimit);
@@ -663,6 +667,7 @@ export function apply(ctx, config) {
 
 /** 只给离线自测用，不参与运行时。 */
 export const __test = {
+  launch,
   buildTranscript,
   planChunks,
   buildPrompt,

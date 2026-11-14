@@ -374,10 +374,11 @@ ${materialDir}
 四、每一节开头用一两句话承上，结尾停在一个自然的气口上，因为最后几节会被直接拼在一起。
 五、每一节都要写成完整成段的口语，不要写小标题清单式的内容。
 六、${chunkCount} 块全部写完之后，按编号顺序把它们拼成最终稿，写到 ${outPath}。拼接用一条命令就够，例如（把变量换成实际路径）：
-   $parts = Get-ChildItem "${joinPath(materialDir, '节*.txt')}" | Sort-Object Name
+   $parts = Get-ChildItem -LiteralPath "${materialDir}" -Filter "节*.txt" | Sort-Object Name
    $sb = New-Object System.Text.StringBuilder
-   foreach ($p in $parts) { [void]$sb.AppendLine((Get-Content $p.FullName -Raw)); [void]$sb.AppendLine() }
+   foreach ($p in $parts) { [void]$sb.AppendLine((Get-Content -LiteralPath $p.FullName -Raw -Encoding UTF8)); [void]$sb.AppendLine() }
    [System.IO.File]::WriteAllText("${outPath}", $sb.ToString(), (New-Object System.Text.UTF8Encoding($false)))
+   注意两个地方必须显式写：读分节文件时带 -Encoding UTF8，写成品时用 UTF8Encoding($false)。少写一个就会读出乱码或写出带 BOM 的文件——拼完先看一眼头几个字是不是正常中文，是乱码就重拼，不要拿去交。
 七、拼完之后通读一遍成品，只做必要的顺稿：去掉重复的过渡句、补上卷与卷之间的衔接、确认开头有收听说明、结尾有收束。改动用 Edit 局部改，不要整篇重写。
 
 ${lengthBlock(minutes, targetChars)}

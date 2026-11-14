@@ -21,7 +21,10 @@ const DEFAULT_MINUTES = 75;
 /** 中文口播的大致字速，用来把「多少分钟」换算成字数。 */
 const CHARS_PER_MINUTE = 260;
 /** 源会话素材超过这么多字，就不再 fork（否则分支一开局就顶到上下文上限）。 */
-const DEFAULT_FORK_LIMIT = 45000;
+/** 读不到模型窗口时的字数兜底线（只在拿不到 contextWindow 时才用得上）。 */
+const DEFAULT_CHAR_FALLBACK = 45000;
+/** 分支会整段继承上下文：模型窗口用到这个比例以上，就改走分块。 */
+const DEFAULT_FORK_WINDOW_RATIO = 0.5;
 /** 分块模式下每一块的目标字数。 */
 const DEFAULT_CHUNK_CHARS = 6000;
 /** 分块数量上限：块再多就自动加粗每块的字数，不让分支跑上百轮。 */
@@ -417,6 +420,89 @@ async function readSurface(ctx, sessionId) {
   return undefined;
 }
 
+/**
+ * 读模型这边的真实预算：这一次请求要装多少 token、这个模型的窗口有多大。
+ * 两个数都来自宿主服务（`session.requestContext()` 的 `contextWindow`、
+ * `tokenMeter.measure(session)` 的 `totalTokens`），不是拍脑袋的常数。
+ */
+function measureBudget(ctx, agent) {
+  const budget = { usedTokens: undefined, contextWindow: undefined, model: undefined };
+  const session = agent?.session;
+  if (session === undefined || session === null) return budget;
+
+  try {
+    const context = session.requestContext?.();
+    if (context !== undefined && context !== null) {
+      if (typeof context.model === 'string' && context.model.length > 0) budget.model = context.model;
+      const window = Number(context.contextWindow);
+      if (Number.isFinite(window) && window > 0) budget.contextWindow = window;
+    }
+  } catch {
+    // 拿不到窗口就当下不知道，走字数兜底。
+  }
+
+  try {
+    const meter = ctx.get?.('tokenMeter') ?? ctx.tokenMeter;
+    if (meter !== undefined && meter !== null && typeof meter.measure === 'function') {
+      const measurement = meter.measure(session);
+      const total = Number(measurement?.totalTokens);
+      if (Number.isFinite(total) && total >= 0) budget.usedTokens = total;
+    }
+  } catch {
+    // 同上。
+  }
+  return budget;
+}
+
+/** 一块素材别超过窗口的百分之五，免得单块就把新会话压满。 */
+function deriveChunkChars(settings, budget) {
+  if (budget?.contextWindow === undefined) return settings.chunkChars;
+  const cap = Math.max(1500, Math.floor(budget.contextWindow * 0.05));
+  return Math.min(settings.chunkChars, cap);
+}
+
+/**
+ * 用模型自己的预算决定投递方式。
+ * 分支会整段继承上下文，所以只有当「已经占的 + 接下来写稿还要用的」装得下时才 fork；
+ * 窗口或用量读不到，就退回按字数判，绝不硬来。
+ */
+function decideDelivery({ budget, materialChars, settings }) {
+  const { usedTokens, contextWindow } = budget;
+
+  if (settings.forkLimit > 0 && materialChars > settings.forkLimit) {
+    return {
+      mode: 'chunked',
+      reason: `素材 ${materialChars} 字，超过配置的 forkLimit ${settings.forkLimit} 字`,
+    };
+  }
+
+  if (usedTokens !== undefined && contextWindow !== undefined) {
+    const ratio = usedTokens / contextWindow;
+    const percent = Math.round(ratio * 100);
+    if (ratio > settings.forkWindowRatio) {
+      return {
+        mode: 'chunked',
+        reason: `模型窗口 ${contextWindow} token，这段对话已经占 ${usedTokens} token（${percent}%），超过 ${Math.round(settings.forkWindowRatio * 100)}% 就不再派生分支`,
+      };
+    }
+    return {
+      mode: 'fork',
+      reason: `模型窗口 ${contextWindow} token，这段对话占 ${usedTokens} token（${percent}%），分支继承得起`,
+    };
+  }
+
+  if (materialChars > settings.charFallback) {
+    return {
+      mode: 'chunked',
+      reason: `读不到模型窗口，按字数判：素材 ${materialChars} 字，超过 ${settings.charFallback} 字`,
+    };
+  }
+  return {
+    mode: 'fork',
+    reason: `读不到模型窗口，按字数判：素材 ${materialChars} 字，分支继承得起`,
+  };
+}
+
 /** 把素材写成文件；返回实际写出的块数与目录。 */
 async function writeMaterial(ctx, cwd, sessionId, chunks, stamp, signal) {
   const shortId = String(sessionId).replace(/[^0-9a-zA-Z]/gu, '').slice(-8);
@@ -451,15 +537,16 @@ async function launch(ctx, agent, options, settings, signal) {
   const fileName = `听书稿_${topic}_${stamp}_v${version}.txt`;
   const outPath = joinPath(cwd, fileName);
 
-  // 先量一下素材。量不出来就当“不长”，走 fork。
+  // 先量两样东西：这段对话的正文素材，和模型这边的真实预算。
   const surface = await readSurface(ctx, sessionId);
   const transcript = surface === undefined ? '' : buildTranscript(surface.events);
   const materialChars = transcript.length;
-  const tooLong = materialChars > settings.forkLimit;
+  const budget = measureBudget(ctx, agent);
+  const decision = decideDelivery({ budget, materialChars, settings });
 
   const job = { topic, stamp, version, outPath, fileName, minutes, extra: options.extra.trim() };
 
-  if (!tooLong) {
+  if (decision.mode === 'fork') {
     let childSessionId;
     try {
       const forked = await ctx.sessionController.fork({ sessionId });
@@ -509,14 +596,15 @@ async function launch(ctx, agent, options, settings, signal) {
         `分支会话：${childSessionId}`,
         `目标文件：${outPath}`,
         `主题：${topic}　日期：${stamp}　当日第 ${version} 版　目标时长：约 ${minutes} 分钟`,
-        `投递方式：分支继承上下文（素材约 ${materialChars} 字，未到 ${settings.forkLimit} 字的分块线）`,
+        `投递方式：分支继承上下文（${decision.reason}）`,
         '分支是独立会话，它会自己写完并回你一份自检报告；这里只能等它完成，不能替它写。',
       ].join('\n'),
     };
   }
 
-  // 素材太长：切块落盘，再开一个空会话按块写，避免一开局就顶到上下文上限。
-  const chunks = planChunks(transcript, settings.chunkChars, MAX_CHUNKS);
+  // 预算装不下：切块落盘，再开一个空会话按块写，避免一开局就顶到上下文上限。
+  const chunkChars = deriveChunkChars(settings, budget);
+  const chunks = planChunks(transcript, chunkChars, MAX_CHUNKS);
   if (chunks.length === 0) {
     return { ok: false, text: `读到了 ${materialChars} 字素材，但切块后是空的，没法开工。` };
   }
@@ -588,9 +676,10 @@ async function launch(ctx, agent, options, settings, signal) {
     materialDir: material.dirPath,
     chunkCount: material.written,
     text: [
-      '这段对话太长，直接派生分支会让分支一开局就顶到上下文上限，所以改走「素材分块 + 新会话」。',
+      '这段对话按模型自己的预算装不下，直接派生分支会一开局就顶到上下文上限，所以改走「素材分块 + 新会话」。',
+      `判断依据：${decision.reason}`,
       `新会话：${childSessionId}`,
-      `素材目录：${material.dirPath}（${material.written} 块，共 ${materialChars} 字，每块约 ${settings.chunkChars} 字）`,
+      `素材目录：${material.dirPath}（${material.written} 块，共 ${materialChars} 字，每块约 ${chunkChars} 字）`,
       `目标文件：${outPath}`,
       `主题：${topic}　日期：${stamp}　当日第 ${version} 版　目标时长：约 ${minutes} 分钟`,
       `写作方式：一块读一次、写一节（每节约 ${perSectionChars} 字），最后按序拼成一稿。`,
@@ -607,12 +696,19 @@ export function apply(ctx, config) {
   const minutesConfig = Number(config?.minutes);
   const forkLimitConfig = Number(config?.forkLimit);
   const chunkCharsConfig = Number(config?.chunkChars);
+  const ratioConfig = Number(config?.forkWindowRatio);
+  const charFallbackConfig = Number(config?.charFallback);
   const timeZoneConfig = typeof config?.timeZone === 'string' ? config.timeZone : '';
   /** 配置在安装期算好一次；launch 每次调用都拿它的快照，不往 ctx 上挂东西。 */
   const settings = Object.freeze({
     minutes: Number.isFinite(minutesConfig) && minutesConfig > 0 ? Math.round(minutesConfig) : DEFAULT_MINUTES,
     timeZone: timeZoneConfig.length > 0 ? timeZoneConfig : 'Asia/Shanghai',
-    forkLimit: Number.isFinite(forkLimitConfig) && forkLimitConfig > 0 ? Math.round(forkLimitConfig) : DEFAULT_FORK_LIMIT,
+    /** 0（默认）＝完全按模型预算决定；正数＝额外加一道字数硬闸，两条任一触发就分块。 */
+    forkLimit: Number.isFinite(forkLimitConfig) && forkLimitConfig > 0 ? Math.round(forkLimitConfig) : 0,
+    forkWindowRatio:
+      Number.isFinite(ratioConfig) && ratioConfig > 0 && ratioConfig < 1 ? ratioConfig : DEFAULT_FORK_WINDOW_RATIO,
+    charFallback:
+      Number.isFinite(charFallbackConfig) && charFallbackConfig > 0 ? Math.round(charFallbackConfig) : DEFAULT_CHAR_FALLBACK,
     chunkChars: Number.isFinite(chunkCharsConfig) && chunkCharsConfig > 0 ? Math.round(chunkCharsConfig) : DEFAULT_CHUNK_CHARS,
   });
 
@@ -677,6 +773,9 @@ export function apply(ctx, config) {
 /** 只给离线自测用，不参与运行时。 */
 export const __test = {
   launch,
+  measureBudget,
+  decideDelivery,
+  deriveChunkChars,
   buildTranscript,
   planChunks,
   buildPrompt,

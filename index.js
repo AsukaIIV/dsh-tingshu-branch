@@ -378,7 +378,7 @@ ${materialDir}
 七、拼完之后通读一遍成品，只做必要的顺稿：去掉重复的过渡句、补上卷与卷之间的衔接、确认开头有收听说明、结尾有收束。改动用 Edit 局部改，不要整篇重写。
 
 ${lengthBlock(minutes, targetChars)}
-按上面的分节字数写满 ${chunkCount} 节，总量自然就落在这个区间，不要在拼接后再大幅增删。
+按上面的分节字数写满 ${chunkCount} 节，总量自然就落在这个区间，不要在拼接后再大幅增删。分节字数只为让总量对得上目标时长：宁可每节短一点、把话说干净，也不要为了凑字数往里加水。两条打架时以总字数为准。
 
 【内容来源：只用素材里真的发生过的事】
 一、素材是原始对话正文。里面提到的报告、规格、脚本、数据文件，如果你能读到就去读，读不到的就不要写那些细节。
@@ -545,7 +545,7 @@ async function launch(ctx, agent, options, settings, signal) {
   }
 
   const perSectionChars = Math.max(
-    200,
+    120,
     Math.round((minutes * CHARS_PER_MINUTE) / material.written),
   );
   const prompt = buildChunkedPrompt({

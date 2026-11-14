@@ -719,7 +719,7 @@ export function apply(ctx, config) {
         definitionId: 'dsh-tingshu-branch',
         name: COMMAND_NAME,
         description:
-          '把当前会话整理成一份适合听的口语化 txt 听书稿，文件名自带日期与当日版本号。会话长了会自动切成素材块、另开一个空会话分块写，不会顶爆上下文。',
+          '把当前会话整理成一份适合听的口语化 txt 听书稿，文件名自带日期与当日版本号。会先读模型的上下文窗口和实际占用，装得下就派生分支继承上下文，装不下就切成素材块、另开一个空会话分块写，不会顶爆上下文。',
         input: { hint: '[-t 主题] [-m 分钟] [本次额外要求，可留空]' },
         handler: async (invocation) => {
           const options = parseRawInput(invocation?.rawInput);
@@ -737,7 +737,7 @@ export function apply(ctx, config) {
       ctx.tools.register({
         name: TOOL_NAME,
         description:
-          '把当前会话整理成一份口语化、适合听的 txt 听书稿，文件名自动带日期与当日版本号。会话很长时会自动切成素材块、另开一个空会话分块写，不会顶爆上下文。用户想「把这次对话做成听书稿」时用它；不要在同一个会话里自己写稿。',
+          '把当前会话整理成一份口语化、适合听的 txt 听书稿，文件名自动带日期与当日版本号。会先读模型的上下文窗口和实际占用，装得下就派生分支继承上下文，装不下就切成素材块、另开一个空会话分块写，不会顶爆上下文。用户想「把这次对话做成听书稿」时用它；不要在同一个会话里自己写稿。',
         parameters: {
           type: 'object',
           properties: {
